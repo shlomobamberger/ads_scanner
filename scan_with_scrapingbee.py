@@ -3,32 +3,34 @@ import json
 import os
 import urllib.request
 import requests
-from bs4 import BeautifulSoup as bf
 from telethon import TelegramClient
 from datetime import datetime
+import re
+import time
 
-
+now = datetime.now()
+current_time_int = int(now.strftime("20%y%m%d"))
+mission_name = 'items'
+FULL_DB_FILE = rf"{mission_name}_full_scan_db.json"
+HOURLY_DB_FILE = rf"{mission_name}_hourly_scan_db.json"
+NEW_ADS_FILE = rf"{mission_name}_new_ads.json"
+LOG_FILE = rf"{mission_name}_log file.txt"
+HTML_FILE = rf"{mission_name}_html_file.html"
+URLS_TO_SCAN = rf"{mission_name}_urls_to_scan.txt"
+IMAGES_FOLDER = rf"{mission_name}_images"
+TELEGRAM_USERS = ('',)  ## CHANGE ME
+api_id = int ## CHANGE ME
+api_hash = 'str'  ## CHANGE ME
+bot_api = 'str'   ## CHANGE ME
+client = TelegramClient('', api_id, api_hash)  ## CHANGE ME
+scrapingbee_token = 'str'  ## CHANGE ME
 ###########################################################################################
-mission_name = ''  # CHANGE IT
-FULL_DB_FILE = r"full_scan_db.json"  # CHANGE IT
-HOURLY_DB_FILE = r"tables_hourly_scan_db.json"  # CHANGE IT
-NEW_ADS_FILE = r"new_ads.json" # CHANGE IT
-LOG_FILE = r"log file.txt" # CHANGE IT
-HTML_FILE = r"html_file.txt" # CHANGE IT
-URL_TO_SCAN = r'https://www.yad2.co.il' # CHANGE IT
-IMAGES_FOLDER = r"images"  # CHANGE IT
-PAGES_TO_SCAN = 10  # CHANGE IT
-TELEGRAM_USERS = ('',)  # CHANGE IT
-api_id = 0   # CHANGE IT
-api_hash = '' # CHANGE IT
-bot_api = ''  # CHANGE IT
-client = TelegramClient('', api_id, api_hash)  # CHANGE IT
-scrapingbee_token = '' # CHANGE IT
-###########################################################################################
-
 
 bot = TelegramClient('bot', api_id, api_hash).start(bot_token=bot_api)
 all_data_dict = {}
+num_new_ads = 0
+num_ads_to_scan = 0
+
 
 def log_helper(text):
     now = datetime.now()
@@ -36,6 +38,16 @@ def log_helper(text):
     log_line = current_time + '   ' + str(text) + '\n'
     with open(LOG_FILE, 'a', encoding='utf-8') as f:
         f.write(log_line)
+
+
+def check_nececry_files():
+    if not os.path.exists(f'{mission_name}_images'):
+        log_helper('create images folder')
+        os.makedirs(f'{mission_name}_images')
+    if not os.path.exists(FULL_DB_FILE):
+        log_helper(f'create {FULL_DB_FILE}')
+        with open(FULL_DB_FILE, 'a') as f:
+            f = json.dump({'empty': 'empty'}, f)
 
 
 def get_id():
@@ -50,85 +62,122 @@ def get_id():
             log_helper('There are no results for your search')
             return False
         else:
-            result = bf(r, 'html.parser')
             ad_details(HTML_FILE)
-    return result
+            return True
 
 
-def ad_details(filename='current.html'):
+def ad_details(filename):
     id_and_ad = {}
-    with open(filename, mode='r', encoding='utf-8') as f:
-        content = f.read()
-        soup = bf(content, 'html.parser')
-        try:
-            business_ads = soup.find('h2', attrs={'id': 'item_title_183'})
-            ads = business_ads.find_all_previous("div", attrs={'class': 'feeditem table'})
-        except:
-            ads = soup.find_all("div", attrs={'class': 'feeditem table'})
-        for ad in ads:
+    with open(filename, 'r', encoding='utf-8') as html:
+        html = html.read()
+        content = "".join(re.findall(r'orderPlaceholder(.+?)seoText', html))
+        content = content.replace(',{id:', ',\n{id:')
+        with open(rf"{mission_name}_dict.json", 'w', encoding='utf-8') as s:
+            s.write(content)
+    with open(rf"{mission_name}_dict.json", 'r', encoding='utf-8') as d:
+        for line in d:
             ad_dict = {}
-            if ad.find("div", attrs={'class': 'merchant merchant_name'}):  #ads from store
-                pass
-            else:  #ads from people
-                id_of_ad = ad.find("div", attrs={'item-id': True}).get('item-id')
-                direct_link = r"https://www.yad2.co.il/item/" + id_of_ad
-                text = "".join(ad.find(attrs={'class': 'row-1'}).contents).strip()
-                city = "".join(ad.find(attrs={'class': 'val'}).text).strip()
-                price = "".join(ad.find(attrs={'class': 'price'}).text).strip()
-                image = "".join(ad.find(attrs={'class': 'feedImage'}).get('src')).strip()
-                if image == r'//assets.yad2.co.il/yad2site/y2assets/images/pages/feed/feed_img_placeholder_small.jpg':
-                    image = 'https://assets.yad2.co.il/yad2site/y2assets/images/pages/feed/feed_img_placeholder_small.jpg'
-                file_size_in_url = r'?l=7&c=3&w=195&h=117'
-                if file_size_in_url in image:
-                    image = image.replace(file_size_in_url, "")
-                ad_dict['id'] = id_of_ad
-                ad_dict['text'] = text.rstrip()
-                ad_dict['direct_link'] = direct_link.strip()
-                ad_dict['city'] = city.rstrip()
-                ad_dict['price'] = price.strip()
-                ad_dict['image'] = image.strip()
-                id_and_ad[id_of_ad] = ad_dict
+            privet_or_seller = "פרטי"
+            if 'merchant_name' in line:
+                privet_or_seller = 'עסקי'
+            id_ad = "".join(re.findall(r'{id:"(.+?)",data:', line))
+            coordinates = "".join(re.findall(r'coordinates:{(.+?)"},row_1:', line))
+            title = "".join(re.findall(r'row_1:"(.+?)",title_1:', line))
+            description = "".join(re.findall(r'title_1:"(.+?)",title_2:', line))
+            city = "".join(re.findall(r',row_2:"(.+?)",row_3', line))
+            product_condition = "".join(re.findall(r',line_2:"(.+?)",external', line))
+            category_name = "".join(re.findall(r'SalesSubCatID_text:"(.+?)",ManufacturID_text', line))
+            contact_name = "".join(re.findall(r'contact_name:"(.+?)",', line))
+            price = "".join(re.findall(r'price:"(.+?)"', line))
+            ad_number = "".join(re.findall(r'ad_number:(.+?),area_id', line))
+            record_id = int("".join(re.findall(r'record_id:(.+?),', line)))
+            img_url = "".join(re.findall(r'img_url:"(.+?)",', line)).replace('u002F', '')
+            img_url = img_url.replace('\\', '/')
+            all_item_images = "".join(re.findall(r'images:\[(.+?)],images_urls', line)).replace('u002F', '')
+            all_item_images = all_item_images.replace('\\', '/').split(',')
+
+            join_date_noneread = "".join(re.findall(r'_20.+?.jp', img_url))[1:-3]
+            join_date_year = join_date_noneread[:4].rstrip()
+            join_date_month = join_date_noneread[4:6].rstrip()
+            join_date_day = join_date_noneread[6:8].rstrip()
+            join_date_hour = join_date_noneread[8:10].rstrip()
+            join_date_minute = join_date_noneread[10:12].rstrip()
+            join_date_second = join_date_noneread[12:14].rstrip()
+            join_date = "".join(join_date_year + '-' + join_date_month + '-' + join_date_day)
+            join_date_int = join_date_year + join_date_month + join_date_day
+            join_time = ''.join(join_date_hour + ':' + join_date_minute + ':' + join_date_second)
+            ad_entry_time = join_date + ' ' + join_time
+
+            ad_dict['privet_or_seller'] = privet_or_seller
+            ad_dict['coordinates'] = coordinates
+            ad_dict['title'] = title
+            ad_dict['privet_or_seller'] = privet_or_seller
+            ad_dict['city'] = city
+            ad_dict['id'] = id_ad
+            ad_dict['product_condition'] = product_condition
+            ad_dict['direct_link'] = r'https://www.yad2.co.il/item/' + id_ad
+            ad_dict['description'] = description
+            ad_dict['price'] = price
+            ad_dict['ad_number'] = ad_number
+            ad_dict['category_name'] = category_name
+            ad_dict['contact_name'] = contact_name
+            ad_dict['ad_entry_time'] = ad_entry_time
+            ad_dict['all_item_images'] = all_item_images
+            ad_dict['img_url'] = img_url
+            id_and_ad[id_ad] = ad_dict
     all_data_dict.update(id_and_ad)
-    return id_and_ad
+    json_data = json.dumps(all_data_dict, ensure_ascii=False)
+    with open(HOURLY_DB_FILE, 'w', encoding='utf-8') as file:
+        file.write(json_data)
+    find_new_ads(FULL_DB_FILE, HOURLY_DB_FILE)
 
 
 def find_new_ads(oldfile, newfile):
+    global num_new_ads, num_ads_to_scan
     num_ads_to_scan = 0
     num_new_ads = 0
     new_ads_dict = {}
     loop = asyncio.get_event_loop()
-    with open(r"C:\yad2scan\near_cities.txt", 'r', encoding='utf-8') as city:
-        city_list = city.read().replace('\n', '')
     with open(oldfile, 'r', encoding='utf-8') as f:
         o = json.load(f)
     with open(newfile, 'r', encoding='utf-8') as f:
         n = json.load(f)
     for i in n:
         num_ads_to_scan += 1
-        if i not in o:
+        if (i not in o) and (n[i]['privet_or_seller'] == 'פרטי'):
             num_new_ads += 1
-            image_path = os.path.join(IMAGES_FOLDER, n[i]['id'] + ".jpg")
-            if n[i]['city'] in city_list:
-                n[i]['city'] += ' ✅ קרוב'
-            else: 
-                n[i]['city'] += ' ❌ רחוק'
-            new_ad_setails = (n[i]['direct_link'] + '\n' + n[i]['text'] + '\n' + n[i]['price']+ '\n' + n[i]['city'])
-            urllib.request.urlretrieve(n[i]['image'], image_path)
+            label = n[i]['category_name'] + ' ב' + n[i]['city']
+            new_ad_details = ('**' + label + '**' + '\n' +
+                              'תיאור: ' + n[i]['title'] + '\n' +
+                              '** מחיר: ' + n[i]['price'] + '**\n' +
+                              'איש קשר: ' + n[i]['contact_name'] + '\n' +
+                              'לפרטים: ' + n[i]['direct_link'])
             new_ads_dict[i] = n[i]
             for user in TELEGRAM_USERS:
-                loop.run_until_complete(send_image_to_telegram(user, image_path, caption=new_ad_setails))
-    log_helper(str(num_new_ads) + ' new ads')
-    for user in TELEGRAM_USERS:
-    #send telegram message if their new ads
-        if num_new_ads > 2:
-            loop.run_until_complete(send_text_to_telegram(user, str(num_new_ads) + ' מודעות חדשות נמצאו '))
+                images_to_send = []
+                if len(n[i]['all_item_images'][0]) > 0:  # todo fix that
+                    # for image in n[i]['all_item_images']:
+                    #    if n[i]['all_item_images'].index(image) < 3:
+                    #       image_path = os.path.join(IMAGES_FOLDER, str(n[i]['all_item_images'].index(image)) + n[i]['id'] + ".jpg")
+                    #       image_url = n[i]['all_item_images'][n[i]['all_item_images'].index(image)][1:-1]
+                    #       urllib.request.urlretrieve(image_url, image_path)
+                    #       images_to_send.append(image_path)
+                    image_path = os.path.join(IMAGES_FOLDER, n[i]['id'] + ".jpg")
+                    image_url = n[i]['all_item_images'][0]
+                    urllib.request.urlretrieve(image_url[1:-1], image_path)
+                    images_to_send.append(image_path)
+                    loop.run_until_complete(send_image_to_telegram(user, images_to_send, caption=new_ad_details))
+                else:
+                    loop.run_until_complete(send_text_to_telegram(user, new_ad_details))
     n = open(NEW_ADS_FILE, 'w', encoding='utf-8')
-    json.dump(new_ads_dict, n,  ensure_ascii=False)
+    json.dump(new_ads_dict, n, ensure_ascii=False)
     n.close()
     update_db_file()
 
+
 async def send_text_to_telegram(user, text):
     await bot.send_message(user, text)
+
 
 async def send_image_to_telegram(user, file, caption=None):
     await bot.send_file(user, file, caption=caption)
@@ -136,31 +185,14 @@ async def send_image_to_telegram(user, file, caption=None):
 
 def update_db_file():
     # read input file
-    full = open(FULL_DB_FILE, "rt", encoding='utf-8')
-    # read file contents to string
-    data_full = full.read()
-    # close the input file
-    full.close()
-    # read input file
-    new = open(NEW_ADS_FILE, "rt", encoding='utf-8')
-    # read file contents to string
-    data_new = new.read()
-    # replace all occurrences of the required string
-    data_update = data_full + data_new
-    while '}}{' in data_update:
-        data_update = data_update.replace('}}{', '}, ')
-    while '} }{' in data_update:
-        data_update = data_update.replace('} }{', '}, ')
-    if '}, }' in data_update[-10:]:
-        data_update = data_update.replace('}, }', '} }')
-    # close the input file
-    new.close()
-    # open the input file in write mode
-    update_full = open(FULL_DB_FILE, "w", encoding='utf-8')
-    # overrite the input file with the resulting data
-    update_full.write(data_update)
-    # close the file
-    update_full.close()
+    with open(FULL_DB_FILE, 'r', encoding='utf-8') as full_db:
+        full = json.load(full_db)
+    with open(HOURLY_DB_FILE, 'r', encoding='utf-8') as temp_db:
+        temp = json.load(temp_db)
+    combined = {**full, **temp}
+    with open(FULL_DB_FILE, 'w', encoding='utf-8') as full_db:
+        json.dump(combined, full_db, ensure_ascii=False)
+
 
 def send_request(url):
     response = requests.get(
@@ -168,33 +200,56 @@ def send_request(url):
         params={
             "api_key": scrapingbee_token,
             "url": url,
-            "render_js": "False",
+            "render_js": "False"
+            # "premium_proxy": "true",
+            # "country_code": "il"
         },
-
     )
     with open(HTML_FILE, 'w', encoding='utf-8') as f:
         f.write(response.text)
 
+
+def create_urls_list():
+    with open(URLS_TO_SCAN, 'r', encoding='utf-8') as f:
+        urls_in_file = f.readlines()
+    urls = []
+    for y in urls_in_file:
+        if '###' not in y:
+            y = y.rstrip()
+            urls.append(y)
+            if main.PAGES_TO_SCAN > 1:
+                for i in range(2, main.PAGES_TO_SCAN + 1):
+                    if "&page=" not in y:
+                        urls.append(y + '&page=' + str(i))
+                    else:
+                        s = y.index('page=')
+                        page_number = int(y[s + 5:]) + i - 1
+                        urls.append(y[:s + 5] + str(page_number))
+    return urls
+
+
+def remove_files():
+    for filename in os.listdir(IMAGES_FOLDER):
+        file_path = os.path.join(IMAGES_FOLDER, filename)
+        os.unlink(file_path)
+    os.unlink(HTML_FILE)
+    os.unlink(HOURLY_DB_FILE)
+    os.unlink(rf"{mission_name}_dict.json")
+    os.unlink(NEW_ADS_FILE)
+
+
 def main():
-    num_pages_to_scan = PAGES_TO_SCAN
-    for i in range(1, num_pages_to_scan + 1):
-        url_to_scan = URL_TO_SCAN
-        if i == 1:
-            send_request(url_to_scan)
-            print("working on " + url_to_scan)
-            get_id()
-        else:
-            url_to_scan += '&page=' + str(i)
-            send_request(url_to_scan)
-            print("working on " + url_to_scan)
-            do_scan = get_id()
-            if not do_scan:
-                break
-    json_data = json.dumps(all_data_dict, ensure_ascii=False)
-    with open(HOURLY_DB_FILE, 'w', encoding='utf-8') as file:
-        file.write(json_data)
-    find_new_ads(FULL_DB_FILE, HOURLY_DB_FILE)
+    check_nececry_files()
+    main.PAGES_TO_SCAN = 1
+    for i in create_urls_list():
+        send_request(i)
+        print("working on " + i)
+        get_id()
+    log_helper(str(num_new_ads) + ' new ads from ' + str(num_ads_to_scan) + ' i scanned')
+    remove_files()
 
 
 if __name__ == '__main__':
+    # while True:
     main()
+    # time.sleep(30)
