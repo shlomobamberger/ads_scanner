@@ -11,6 +11,7 @@ import time
 now = datetime.now()
 current_time_int = int(now.strftime("20%y%m%d"))
 mission_name = 'items'
+NEAR_CITY_FILE = "near_cities.txt"
 FULL_DB_FILE = rf"{mission_name}_full_scan_db.json"
 HOURLY_DB_FILE = rf"{mission_name}_hourly_scan_db.json"
 NEW_ADS_FILE = rf"{mission_name}_new_ads.json"
@@ -18,6 +19,7 @@ LOG_FILE = rf"{mission_name}_log file.txt"
 HTML_FILE = rf"{mission_name}_html_file.html"
 URLS_TO_SCAN = rf"{mission_name}_urls_to_scan.txt"
 IMAGES_FOLDER = rf"{mission_name}_images"
+DEFAULT_NUM_PAGES_TO_SCAN = 1
 TELEGRAM_USERS = ('',)  ## CHANGE ME
 api_id = int ## CHANGE ME
 api_hash = 'str'  ## CHANGE ME
@@ -142,10 +144,16 @@ def find_new_ads(oldfile, newfile):
         o = json.load(f)
     with open(newfile, 'r', encoding='utf-8') as f:
         n = json.load(f)
+    with open(NEAR_CITY_FILE, 'r', encoding='utf-8') as city:
+        city_list = city.read().replace('\n', '')
     for i in n:
         num_ads_to_scan += 1
         if (i not in o) and (n[i]['privet_or_seller'] == 'פרטי'):
             num_new_ads += 1
+            if n[i]['city'] in city_list:
+                n[i]['city'] += ' ✅ קרוב'
+            else:
+                n[i]['city'] += ' ❌ רחוק'
             label = n[i]['category_name'] + ' ב' + n[i]['city']
             new_ad_details = ('**' + label + '**' + '\n' +
                               'תיאור: ' + n[i]['title'] + '\n' +
@@ -213,18 +221,24 @@ def create_urls_list():
     with open(URLS_TO_SCAN, 'r', encoding='utf-8') as f:
         urls_in_file = f.readlines()
     urls = []
-    for y in urls_in_file:
-        if '###' not in y:
-            y = y.rstrip()
-            urls.append(y)
-            if main.PAGES_TO_SCAN > 1:
-                for i in range(2, main.PAGES_TO_SCAN + 1):
-                    if "&page=" not in y:
-                        urls.append(y + '&page=' + str(i))
+    for line in urls_in_file:
+        if '###' not in line:
+            line = line.rstrip()
+            line = line.split("(")
+            url = line[0].rstrip()
+            if len(line) > 1:
+                num_pages_to_scan = int(line[1][:-1])
+            else:
+                num_pages_to_scan = DEFAULT_NUM_PAGES_TO_SCAN
+            urls.append(url)  # always add the basic url to list
+            if num_pages_to_scan > 1:
+                for i in range(2, num_pages_to_scan + 1):
+                    if "&page=" not in url:
+                        urls.append(url + '&page=' + str(i))
                     else:
-                        s = y.index('page=')
-                        page_number = int(y[s + 5:]) + i - 1
-                        urls.append(y[:s + 5] + str(page_number))
+                        s = url.index('page=')
+                        page_number = int(url[s + 5:]) + i - 1
+                        urls.append(url[:s + 5] + str(page_number))
     return urls
 
 
@@ -245,7 +259,7 @@ def main():
         send_request(i)
         print("working on " + i)
         get_id()
-    log_helper(str(num_new_ads) + ' new ads from ' + str(num_ads_to_scan) + ' i scanned')
+    log_helper(str(num_new_ads) + ' new ads were found out of ' + str(num_ads_to_scan) + ' scanned')
     remove_files()
 
 
