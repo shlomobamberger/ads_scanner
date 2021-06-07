@@ -24,7 +24,6 @@ TELEGRAM_USERS = ('',)  ## CHANGE ME
 api_id = int ## CHANGE ME
 api_hash = 'str'  ## CHANGE ME
 bot_api = 'str'   ## CHANGE ME
-client = TelegramClient('', api_id, api_hash)  ## CHANGE ME
 scrapingbee_token = 'str'  ## CHANGE ME
 ###########################################################################################
 
