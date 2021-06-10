@@ -116,7 +116,7 @@ def ad_details(filename):
             ad_dict['city'] = city
             ad_dict['id'] = id_ad
             ad_dict['product_condition'] = product_condition
-            ad_dict['direct_link'] = r'https://www.yad2.co.il/item/' + id_ad
+            ad_dict['direct_link'] = r'https://www.****.co.il/item/' + id_ad
             ad_dict['description'] = description
             ad_dict['price'] = price
             ad_dict['ad_number'] = ad_number
