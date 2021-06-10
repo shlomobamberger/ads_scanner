@@ -53,7 +53,7 @@ def check_nececry_files():
 
 def get_id():
     with open(HTML_FILE, mode='r', encoding='utf-8') as r:
-        if r'assets.yad2.co.il/yad2site/y2assets/images/pages/feed/no-results-feed.png' in r:
+        if r'y2assets/images/pages/feed/no-results-feed.png' in r:
             log_helper("no-results for this url")
             return False
         elif 'Are you for real' in r:
