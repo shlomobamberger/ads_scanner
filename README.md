@@ -1,11 +1,11 @@
-# yad2_scanner
+# ads_scanner
 > help you locate new ads and send them directly to a telegram robot
 
 ## how to use
 ### "items_urls_to_scan.txt" file
 * This file lists each URL at which you want to perform the scan on a separate line (To undo a line simply add ### at the end of the line)
 *  At the end of the line, put in parentheses the number of pages you want to scan 
-*  For example https://www.yad2.co.il/products/computers-and-accessories?category=6&item=34&price=1000-2000 (5)  
+*  For example https://*******/products/computers-and-accessories?category=6&item=34&price=1000-2000 (5)  
 *  The script will crawl the link to page 5 (inclusive) in the search results
 ### "near_city.txt" file
 * Add to this file the names of the cities closest to you
